@@ -1,0 +1,114 @@
+{
+  "name": "3. Approval Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [ 300, 300 ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "projectId": "YOUR_NOCODB_PROJECT_ID",
+        "table": "invoices",
+        "returnAll": true,
+        "filters": "={ \"where\": \"(send_for_approval,eq,true)~and(status,eq,Draft)\" }"
+      },
+      "name": "Get Pending Invoices",
+      "type": "n8n-nodes-base.nocoDb",
+      "typeVersion": 3,
+      "position": [ 500, 300 ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "bot@company.com",
+        "toEmail": "approver@company.com",
+        "subject": "={{ 'Approval Needed: Invoice ' + $json.invoice_number }}",
+        "html": "={{ '<p>Please approve the following invoice:</p><p>Vendor: ' + $json.vendor + '</p><p>Amount: ' + $json.gross_amount + ' ' + $json.currency + '</p><p><a href=\"YOUR_N8N_URL/webhook/approve?id=' + $json.id + '&action=approve\">Approve</a> | <a href=\"YOUR_N8N_URL/webhook/approve?id=' + $json.id + '&action=reject\">Reject</a></p>' }}"
+      },
+      "name": "Send Approval Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [ 700, 300 ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "projectId": "YOUR_NOCODB_PROJECT_ID",
+        "table": "invoices",
+        "columns": "status",
+        "rowId": "={{ $json.id }}"
+      },
+      "name": "Update Status to Pending",
+      "type": "n8n-nodes-base.nocoDb",
+      "typeVersion": 3,
+      "position": [ 900, 300 ]
+    },
+    {
+      "parameters": {
+        "jsCode": "$input.item.json.status = 'Pending Approval';\nreturn $input.item;"
+      },
+      "name": "Set Pending Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 800, 300 ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Invoices": {
+      "main": [
+        [
+          {
+            "node": "Send Approval Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approval Email": {
+      "main": [
+        [
+          {
+            "node": "Set Pending Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Pending Status": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

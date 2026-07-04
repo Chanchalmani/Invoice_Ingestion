@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - WEBHOOK_URL=http://localhost:5678/
+      # Timezone
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped
+
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: nocodb
+    ports:
+      - "8080:8080"
+    environment:
+      - NC_DB=pg://postgres:5432?u=postgres&p=password&d=nocodb
+      - NC_ALLOW_LOCAL_EXTERNAL_DBS=true
+    depends_on:
+      - postgres
+    volumes:
+      - nocodb_data:/usr/app/data/
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=nocodb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
+  nocodb_data:
+  postgres_data:

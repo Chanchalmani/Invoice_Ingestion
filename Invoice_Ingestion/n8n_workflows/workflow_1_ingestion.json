@@ -1,0 +1,154 @@
+{
+  "name": "1. Invoice Ingestion & AI Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "postProcessAction": "nothing",
+        "format": "resolved",
+        "options": {
+          "customEmailConfig": "[\"UNSEEN\"]"
+        }
+      },
+      "name": "Email Read (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [ 250, 300 ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hasAttachment }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Has Attachment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [ 450, 300 ]
+    },
+    {
+      "parameters": {
+        "operation": "extract",
+        "fileFormat": "pdf"
+      },
+      "name": "Extract Text from PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [ 650, 280 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama3.2:3b"
+            },
+            {
+              "name": "stream",
+              "value": "false"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "prompt",
+              "value": "={{ 'You are an expert invoice parser and data extraction system. Your task is to extract information from the provided invoice text and return a structured JSON object. Extract the following fields. If a field is missing or cannot be found, use null. - vendor: (string) The name of the vendor or supplier. - vendor_uid: (string) The vendor tax ID. - invoice_number: (string) The unique invoice number. - invoice_date: (string) Date issued (YYYY-MM-DD). - due_date: (string) Payment due (YYYY-MM-DD). - net_amount: (number) Total before tax. - vat_amount: (number) Total tax. - vat_percent: (number) Tax rate. - gross_amount: (number) Total with tax. - currency: (string) 3-letter currency code. - cost_center: (string) likely department. - line_items: (array of objects with description, quantity, unit_price, total). - confidence_score: (number 0-1). - anomalies: (array of strings). Return ONLY valid JSON. Invoice Text:\\n' + $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Ollama Llama 3.2:3b",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [ 850, 280 ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.item.json.response;\nlet data;\ntry {\n  data = JSON.parse(aiResponse);\n} catch(e) {\n  data = { vendor: 'Parse Error', confidence_score: 0, anomalies: ['JSON Parse Error'] };\n}\n\n// Default Fallbacks\nconst cleaned = {\n    vendor: data.vendor || 'Unknown Vendor',\n    vendor_uid: data.vendor_uid || null,\n    vendor_iban: data.vendor_iban || null,\n    invoice_number: data.invoice_number || `UNKNOWN-${Date.now()}`,\n    invoice_date: data.invoice_date || null,\n    due_date: data.due_date || null,\n    net_amount: parseFloat(data.net_amount) || 0,\n    vat_amount: parseFloat(data.vat_amount) || 0,\n    vat_percent: parseFloat(data.vat_percent) || 0,\n    gross_amount: parseFloat(data.gross_amount) || 0,\n    currency: data.currency || 'USD',\n    cost_center: data.cost_center || 'General',\n    confidence_score: parseFloat(data.confidence_score) || 0,\n    anomalies: JSON.stringify(Array.isArray(data.anomalies) ? data.anomalies : []),\n};\n\nif (cleaned.confidence_score < 0.7) {\n  cleaned.status = 'Needs Review';\n} else {\n  cleaned.status = 'Draft';\n}\n\n// Carry over email metadata\ncleaned.email_sender = $('Email Read (IMAP)').item.json.from;\ncleaned.email_subject = $('Email Read (IMAP)').item.json.subject;\n\nreturn cleaned;"
+      },
+      "name": "Clean Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 1050, 280 ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "projectId": "YOUR_NOCODB_PROJECT_ID",
+        "table": "invoices",
+        "columns": "vendor,vendor_uid,invoice_number,invoice_date,due_date,net_amount,vat_amount,gross_amount,currency,cost_center,status,confidence_score,anomalies,email_sender,email_subject"
+      },
+      "name": "Create Invoice (NocoDB)",
+      "type": "n8n-nodes-base.nocoDb",
+      "typeVersion": 3,
+      "position": [ 1250, 280 ]
+    }
+  ],
+  "connections": {
+    "Email Read (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Has Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Extract Text from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text from PDF": {
+      "main": [
+        [
+          {
+            "node": "Ollama Llama 3.2:3b",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Llama 3.2:3b": {
+      "main": [
+        [
+          {
+            "node": "Clean Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Data": {
+      "main": [
+        [
+          {
+            "node": "Create Invoice (NocoDB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

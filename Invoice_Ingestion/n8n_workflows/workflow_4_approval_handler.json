@@ -1,0 +1,84 @@
+{
+  "name": "4. Approval Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "approve",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [ 300, 300 ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const id = $input.item.json.query.id;\nconst action = $input.item.json.query.action;\nlet newStatus = 'Draft';\nif (action === 'approve') newStatus = 'Fully Approved';\nif (action === 'reject') newStatus = 'Rejected';\n\nreturn {\n  id: id,\n  status: newStatus\n};"
+      },
+      "name": "Determine Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 500, 300 ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "projectId": "YOUR_NOCODB_PROJECT_ID",
+        "table": "invoices",
+        "columns": "status",
+        "rowId": "={{ $json.id }}"
+      },
+      "name": "Update Invoice (NocoDB)",
+      "type": "n8n-nodes-base.nocoDb",
+      "typeVersion": 3,
+      "position": [ 700, 300 ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ 'Invoice ' + $json.id + ' has been ' + $json.status + '.' }}"
+      },
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [ 900, 300 ]
+    }
+  ],
+  "connections": {
+    "Webhook (GET)": {
+      "main": [
+        [
+          {
+            "node": "Determine Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Status": {
+      "main": [
+        [
+          {
+            "node": "Update Invoice (NocoDB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Invoice (NocoDB)": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

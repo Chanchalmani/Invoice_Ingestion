@@ -1,0 +1,130 @@
+{
+  "name": "2. Manual Review Interface",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "review-invoice",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [ 300, 300 ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "projectId": "YOUR_NOCODB_PROJECT_ID",
+        "table": "invoices",
+        "rowId": "={{ $json.query.id }}"
+      },
+      "name": "Get Invoice (NocoDB)",
+      "type": "n8n-nodes-base.nocoDb",
+      "typeVersion": 3,
+      "position": [ 500, 300 ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ '<!DOCTYPE html><html><head><title>Review Invoice</title><style>body { font-family: sans-serif; padding: 20px; } .form-group { margin-bottom: 15px; } label { display: block; font-weight: bold; } input, select { width: 100%; padding: 8px; box-sizing: border-box; }</style></head><body><h1>Review Invoice ' + $json.invoice_number + '</h1><form action=\"/webhook/submit-review\" method=\"POST\"><input type=\"hidden\" name=\"id\" value=\"' + $json.id + '\"><div class=\"form-group\"><label>Vendor</label><input type=\"text\" name=\"vendor\" value=\"' + $json.vendor + '\"></div><div class=\"form-group\"><label>Net Amount</label><input type=\"text\" name=\"net_amount\" value=\"' + $json.net_amount + '\"></div><div class=\"form-group\"><label>Department</label><select name=\"department\"><option value=\"IT\">IT</option><option value=\"Marketing\">Marketing</option><option value=\"General\">General</option></select></div><div class=\"form-group\"><label><input type=\"checkbox\" name=\"send_for_approval\" value=\"true\"> Send for Approval</label></div><button type=\"submit\">Save</button></form></body></html>' }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Serve HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [ 700, 300 ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "submit-review",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [ 300, 500 ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "projectId": "YOUR_NOCODB_PROJECT_ID",
+        "table": "invoices",
+        "columns": "vendor,net_amount,selected_departments,send_for_approval",
+        "rowId": "={{ $json.body.id }}"
+      },
+      "name": "Update Invoice (NocoDB)",
+      "type": "n8n-nodes-base.nocoDb",
+      "typeVersion": 3,
+      "position": [ 500, 500 ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Review saved successfully."
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [ 700, 500 ]
+    }
+  ],
+  "connections": {
+    "Webhook (GET)": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice (NocoDB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice (NocoDB)": {
+      "main": [
+        [
+          {
+            "node": "Serve HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (POST)": {
+      "main": [
+        [
+          {
+            "node": "Update Invoice (NocoDB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Invoice (NocoDB)": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
